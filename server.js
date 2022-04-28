@@ -101,6 +101,38 @@ app.post('/login', jsonParser, function (req, res) {
 	});
  })
 
+ app.get('/getAppointmentList', function(req, res) {
+	var query = {};
+	var limit = 1000;
+    MongoClient.connect(dbUrl, function(err,db){
+        if (err) throw err;
+        var dbo = db.db("ehr");
+        dbo.collection('appointment').aggregate([
+			{
+				$match: {"patientId": req.query.patientId}
+			},
+			{
+				$lookup:
+					{
+						from: 'physiotherapists',
+						localField: 'phyId',
+						foreignField: 'id',
+						as: 'physiotherapistsDetails'
+					}
+			}
+		]).toArray(function(err, result) {
+			if (err) throw err;
+			var response = {
+				status  : 200,
+				res : result
+			}
+			res.writeHead(200, {'Content-Type':'text/html;charset=UTF-8'});
+			res.end(JSON.stringify(response));
+			db.close();
+		});
+    });
+ })
+
  var server = app.listen(3001, function () {
     var port = server.address().port
    
