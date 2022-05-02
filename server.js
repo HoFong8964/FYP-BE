@@ -101,25 +101,170 @@ app.post('/login', jsonParser, function (req, res) {
 	});
  })
 
- app.get('/getAppointmentList', function(req, res) {
+ app.get('/getFeatureAppointmentList', function(req, res) {
+    MongoClient.connect(dbUrl, function(err,db){
+        if (err) throw err;
+        var dbo = db.db("ehr");
+		var today = new Date().toISOString().split('T')[0];
+
+		if(req.query.patientId){
+			dbo.collection('appointment').aggregate([
+				{
+					$match: {
+						"patientId": req.query.patientId,
+						"appointmentDate": { $gte: today},
+					}
+				},
+				{
+					$lookup:
+						{
+							from: 'physiotherapists',
+							localField: 'phyId',
+							foreignField: 'id',
+							as: 'physiotherapistsDetails'
+						}
+				},
+				{ $sort : { appointmentDate : -1 } }
+			]).toArray(function(err, result) {
+				if (err) throw err;
+				var response = {
+					status  : 200,
+					res : result
+				}
+				res.writeHead(200, {'Content-Type':'text/html;charset=UTF-8'});
+				res.end(JSON.stringify(response));
+				db.close();
+			});
+		}
+		else if (req.query.phyId){
+			dbo.collection('appointment').aggregate([
+				{
+					$match: {
+						"phyId": req.query.phyId,
+						"appointmentDate": { $gte: today},
+					}
+				},
+				{
+					$lookup:
+						{
+							from: 'users',
+							localField: 'patientId',
+							foreignField: 'id',
+							as: 'patientDetails'
+						}
+				},
+				{ $sort : { appointmentDate : -1 } }
+			]).toArray(function(err, result) {
+				if (err) throw err;
+				var response = {
+					status  : 200,
+					res : result
+				}
+				res.writeHead(200, {'Content-Type':'text/html;charset=UTF-8'});
+				res.end(JSON.stringify(response));
+				db.close();
+			});
+		}
+    });
+ })
+
+ app.get('/getPastAppointmentList', function(req, res) {
+    MongoClient.connect(dbUrl, function(err,db){
+        if (err) throw err;
+        var dbo = db.db("ehr");
+		var today = new Date().toISOString().split('T')[0];
+        if(req.query.patientId){
+			dbo.collection('appointment').aggregate([
+				{
+					$match: {
+						"patientId": req.query.patientId,
+						"appointmentDate": { $lte: today},
+					}
+				},
+				{
+					$lookup:
+						{
+							from: 'physiotherapists',
+							localField: 'phyId',
+							foreignField: 'id',
+							as: 'physiotherapistsDetails'
+						}
+				},
+				{ $sort : { appointmentDate : -1 } }
+			]).toArray(function(err, result) {
+				if (err) throw err;
+				var response = {
+					status  : 200,
+					res : result
+				}
+				res.writeHead(200, {'Content-Type':'text/html;charset=UTF-8'});
+				res.end(JSON.stringify(response));
+				db.close();
+			});
+		}
+		else if (req.query.phyId){
+			dbo.collection('appointment').aggregate([
+				{
+					$match: {
+						"phyId": req.query.phyId,
+						"appointmentDate": { $lte: today},
+					}
+				},
+				{
+					$lookup:
+						{
+							from: 'users',
+							localField: 'patientId',
+							foreignField: 'id',
+							as: 'patientDetails'
+						}
+				},
+				{ $sort : { appointmentDate : -1 } }
+			]).toArray(function(err, result) {
+				if (err) throw err;
+				var response = {
+					status  : 200,
+					res : result
+				}
+				res.writeHead(200, {'Content-Type':'text/html;charset=UTF-8'});
+				res.end(JSON.stringify(response));
+				db.close();
+			});
+		}
+    });
+ })
+
+ var server = app.listen(3001, function () {
+    var port = server.address().port
+   
+    console.log("Running in http://loclhost:%s", port)
+   
+})
+
+app.get('/getPatient', function(req, res) {
 	var query = {};
 	var limit = 1000;
     MongoClient.connect(dbUrl, function(err,db){
         if (err) throw err;
         var dbo = db.db("ehr");
-        dbo.collection('appointment').aggregate([
+        dbo.collection('users').aggregate([
 			{
-				$match: {"patientId": req.query.patientId}
+				$match: {
+					"id": req.query.patientId,
+					//"appointmentDate": { $gte: today},
+				}
 			},
 			{
+				
 				$lookup:
 					{
-						from: 'physiotherapists',
-						localField: 'phyId',
+						from: 'medicalHistory',
+						localField: 'patientId',
 						foreignField: 'id',
-						as: 'physiotherapistsDetails'
+						as: 'medicalHistoryList'
 					}
-			}
+				
+			},
 		]).toArray(function(err, result) {
 			if (err) throw err;
 			var response = {
@@ -132,13 +277,6 @@ app.post('/login', jsonParser, function (req, res) {
 		});
     });
  })
-
- var server = app.listen(3001, function () {
-    var port = server.address().port
-   
-    console.log("Running in http://loclhost:%s", port)
-   
-})
 
 
 function success_response(res, msg, data=[]){
