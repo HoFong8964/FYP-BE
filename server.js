@@ -26,7 +26,6 @@ app.post('/login', jsonParser, function (req, res) {
 
 	//console.log("login_info: ", login_info);
     MongoClient.connect(dbUrl, function(err,db){
-        console.log("err: ", err);
         if (err) throw err;
         var dbo = db.db("ehr");
         dbo.collection("users").findOne(login_info).then(result => {
@@ -74,7 +73,6 @@ app.post('/login', jsonParser, function (req, res) {
 				status  : 200,
 				res : result
 			}
-			console.log(response);
 			res.writeHead(200, {'Content-Type':'text/html;charset=UTF-8'});
 			res.end(JSON.stringify(response));
 		});
@@ -90,7 +88,6 @@ app.post('/login', jsonParser, function (req, res) {
 		'remarks': req.body.remarks,
 	};
     MongoClient.connect(dbUrl, function(err,db){
-		console.log("err: ", );
 		if (err) throw err;
 		var dbo = db.db("ehr");
 		dbo.collection("appointment").insertOne(appointment_info, function(err, result) {
@@ -100,6 +97,24 @@ app.post('/login', jsonParser, function (req, res) {
 		});
 	});
  })
+
+ app.delete('/cancelAppointment', function(req, res) {
+	MongoClient.connect(dbUrl, function(err, db) {
+		if (err) throw err;
+		var dbo = db.db("ehr");
+		var query = { "_id": ObjectId(req.query.id) };
+		dbo.collection("appointment").deleteOne(query, function(err, result) {
+		  	if (err) throw err;
+		  	var response = {
+				status  : 200,
+				res : result
+			}
+			res.end(JSON.stringify(response));
+			db.close();
+		});
+	  });
+ })
+ 
 
  app.get('/getFeatureAppointmentList', function(req, res) {
     MongoClient.connect(dbUrl, function(err,db){
@@ -154,6 +169,56 @@ app.post('/login', jsonParser, function (req, res) {
 						}
 				},
 				{ $sort : { appointmentDate : -1 } }
+			]).toArray(function(err, result) {
+				if (err) throw err;
+				var response = {
+					status  : 200,
+					res : result
+				}
+				res.writeHead(200, {'Content-Type':'text/html;charset=UTF-8'});
+				res.end(JSON.stringify(response));
+				db.close();
+			});
+		}
+    });
+ })
+
+
+ app.get('/getMyPatients', function(req, res) {
+    MongoClient.connect(dbUrl, function(err,db){
+		if (err) throw err;
+        var dbo = db.db("ehr");
+        if (req.query.phyId){
+			dbo.collection('users').aggregate([
+				{
+					$lookup:
+						{
+							from: 'appointment',
+							localField: 'id',
+							foreignField: 'patientId',
+							as: 'appointmentDetails'
+						}
+				},
+				{
+					$match: {
+						"appointmentDetails.phyId": req.query.phyId,
+					}
+				},
+				{
+					$project:
+						{
+							id: 1,
+							displayName: 1,
+							sex: 1,
+							dob: 1,
+							idNum: 1,
+							phoneNum: 1,
+							phyId: 1,
+							total: {
+								$size: "$appointmentDetails"
+						}
+					}
+				},
 			]).toArray(function(err, result) {
 				if (err) throw err;
 				var response = {
@@ -234,6 +299,33 @@ app.post('/login', jsonParser, function (req, res) {
     });
  })
 
+ app.get('/isPatientAuth', function(req, res) {
+    MongoClient.connect(dbUrl, function(err,db){
+        if (err) throw err;
+        var dbo = db.db("ehr");
+
+		if(req.query.patientId){
+			dbo.collection('appointment').aggregate([
+				{
+					$match: {
+						"patientId": req.query.patientId,
+						"phyId": req.query.phyId,
+					}
+				},
+			]).toArray(function(err, result) {
+				if (err) throw err;
+				var response = {
+					status  : 200,
+					res : result.length > 0 ? true : false
+				}
+				res.writeHead(200, {'Content-Type':'text/html;charset=UTF-8'});
+				res.end(JSON.stringify(response));
+				db.close();
+			});
+		}
+    });
+ })
+
  var server = app.listen(3001, function () {
     var port = server.address().port
    
@@ -242,8 +334,6 @@ app.post('/login', jsonParser, function (req, res) {
 })
 
 app.get('/getPatient', function(req, res) {
-	var query = {};
-	var limit = 1000;
     MongoClient.connect(dbUrl, function(err,db){
         if (err) throw err;
         var dbo = db.db("ehr");
@@ -255,15 +345,33 @@ app.get('/getPatient', function(req, res) {
 				}
 			},
 			{
-				
 				$lookup:
 					{
 						from: 'medicalHistory',
-						localField: 'patientId',
-						foreignField: 'id',
-						as: 'medicalHistoryList'
+						localField: 'id',
+						foreignField: 'patientId',
+						as: 'medicalHistoryList',
+						pipeline: [
+						  {
+							$sort: {  'date': -1 }
+						  },
+						],
 					}
 				
+			},
+			{
+				$lookup:
+					{
+						from: 'workoutHistory',
+						localField: 'id',
+						foreignField: 'patientId',
+						as: 'workoutHistoryList',
+						pipeline: [
+						  {
+							$sort: {  'startTime': -1 }
+						  },
+						],
+					}
 			},
 		]).toArray(function(err, result) {
 			if (err) throw err;
@@ -285,7 +393,6 @@ function success_response(res, msg, data=[]){
 		message : msg,
 		data: data
 	}
-	console.log(response);
 	res.writeHead(200, {'Content-Type':'text/html;charset=UTF-8'});
 	res.end(JSON.stringify(response));
 }
